@@ -1,25 +1,46 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { supabase } from '../lib/supabase';
 import type { Sale } from '../lib/types';
 import { formatCurrency, formatDate, getPaymentMethodLabel } from '../lib/utils';
 import { Search, Eye, RotateCcw, X } from 'lucide-react';
 
+function toLocalDateString(d: Date) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
 export default function SalesHistoryPage() {
   const [sales, setSales] = useState<Sale[]>([]);
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState('');
+  const [date, setDate] = useState(toLocalDateString(new Date()));
   const [selectedSale, setSelectedSale] = useState<Sale | null>(null);
 
   const loadSales = useCallback(async () => {
     let query = supabase
       .from('sales')
       .select('*, sale_details(*), payments(*, mixed_payment_details(*))')
-      .order('sale_date', { ascending: false })
-      .limit(100);
+      .order('sale_date', { ascending: false });
+
+    if (date) {
+      // Rango del día en hora local (evita el desfase de UTC)
+      const start = new Date(`${date}T00:00:00`);
+      const end = new Date(start);
+      end.setDate(end.getDate() + 1);
+      query = query
+        .gte('sale_date', start.toISOString())
+        .lt('sale_date', end.toISOString())
+        .limit(1000);
+    } else {
+      query = query.limit(100);
+    }
+
     if (filterStatus) query = query.eq('status', filterStatus);
     const { data } = await query;
     setSales(data ?? []);
-  }, [filterStatus]);
+  }, [filterStatus, date]);
 
   useEffect(() => { loadSales(); }, [loadSales]);
 
@@ -30,6 +51,25 @@ export default function SalesHistoryPage() {
         s.sale_details?.some((d) => d.product_name.toLowerCase().includes(search.toLowerCase()))
       )
     : sales;
+
+  // Resumen de productos vendidos (solo ventas completadas)
+  const productSummary = useMemo(() => {
+    const map = new Map<string, { name: string; quantity: number; total: number }>();
+    for (const s of sales) {
+      if (s.status !== 'completed') continue;
+      for (const d of s.sale_details ?? []) {
+        const key = d.product_id || d.product_name;
+        const prev = map.get(key) ?? { name: d.product_name, quantity: 0, total: 0 };
+        prev.quantity += Number(d.quantity) || 0;
+        prev.total += Number(d.subtotal) || 0;
+        map.set(key, prev);
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => b.quantity - a.quantity);
+  }, [sales]);
+
+  const totalUnits = productSummary.reduce((sum, p) => sum + p.quantity, 0);
+  const totalAmount = productSummary.reduce((sum, p) => sum + p.total, 0);
 
   const handleReturn = async (sale: Sale) => {
     if (!confirm('Confirma la devolucion de esta venta?')) return;
@@ -54,6 +94,14 @@ export default function SalesHistoryPage() {
           <input type="text" value={search} onChange={(e) => setSearch(e.target.value)}
             placeholder="Buscar por producto o ID..." className="w-full pl-9 pr-4 py-2 rounded-lg border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500" />
         </div>
+        <input type="date" value={date} onChange={(e) => setDate(e.target.value)}
+          className="px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white" />
+        {date && (
+          <button onClick={() => setDate('')}
+            className="px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white text-slate-600 hover:bg-slate-50">
+            Ver todo
+          </button>
+        )}
         <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
           className="px-3 py-2 rounded-lg border border-slate-200 text-sm bg-white">
           <option value="">Todos los estados</option>
@@ -62,6 +110,30 @@ export default function SalesHistoryPage() {
           <option value="returned">Devueltas</option>
         </select>
       </div>
+
+      {productSummary.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4 mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3">
+            <h2 className="text-sm font-semibold text-slate-700">
+              {date ? 'Productos vendidos del día' : 'Productos vendidos (últimas ventas)'}
+            </h2>
+            <span className="text-xs text-slate-500">
+              {totalUnits} unidades · {formatCurrency(totalAmount)}
+            </span>
+          </div>
+          <div className="divide-y divide-slate-100">
+            {productSummary.map((p) => (
+              <div key={p.name} className="flex items-center justify-between py-2 text-sm">
+                <span className="text-slate-700">{p.name}</span>
+                <span className="text-slate-500">
+                  <span className="font-semibold text-slate-800">x{p.quantity}</span>
+                  <span className="ml-3">{formatCurrency(p.total)}</span>
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
@@ -82,13 +154,17 @@ export default function SalesHistoryPage() {
                   <td className="px-4 py-3 text-sm text-slate-600">{formatDate(s.sale_date)}</td>
                   <td className="px-4 py-3">
                     <p className="text-sm text-slate-800">
-                      {s.sale_details?.map((d) => d.product_name).join(', ') ?? '—'}
+                      {s.sale_details?.length
+                        ? s.sale_details.map((d) => `${d.product_name} x${d.quantity}`).join(', ')
+                        : '—'}
                     </p>
                     <p className="text-xs text-slate-400">{s.sale_details?.length ?? 0} items</p>
                   </td>
                   <td className="px-4 py-3 text-sm font-bold text-slate-800 text-right">{formatCurrency(s.total)}</td>
                   <td className="px-4 py-3 text-sm text-slate-600">
-                    {s.payments?.map((p) => getPaymentMethodLabel(p.method)).join(', ') ?? '—'}
+                    {s.payments?.length
+                      ? s.payments.map((p) => getPaymentMethodLabel(p.method)).join(', ')
+                      : '—'}
                   </td>
                   <td className="px-4 py-3 text-center">
                     <span className={`px-2 py-1 rounded-full text-xs font-medium ${
