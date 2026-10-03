@@ -119,7 +119,7 @@ export default function POSScreen() {
       {showCheckout && (
         <CheckoutModal
           cart={cart}
-          subtotal={subtotal}
+                    subtotal={subtotal + totalDiscount}
           discountAmount={totalDiscount + globalDiscount}
           total={total}
           onClose={() => setShowCheckout(false)}

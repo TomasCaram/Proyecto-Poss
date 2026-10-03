@@ -1,6 +1,5 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../hooks/useAuth';
 import type { CartItem } from '../../lib/types';
 import { formatCurrency } from '../../lib/utils';
 import { X, CreditCard, Banknote, Smartphone, ArrowRightLeft, CheckCircle } from 'lucide-react';
@@ -19,8 +18,19 @@ interface MixedEntry {
   amount: string;
 }
 
+function getCheckoutErrorMessage(err: unknown): string {
+  const msg = (err as { message?: string })?.message ?? '';
+  if (msg.includes('NO_OPEN_REGISTER')) return 'No hay una caja abierta. Abrí la caja antes de cobrar.';
+  if (msg.includes('INSUFFICIENT_STOCK')) {
+    return `Stock insuficiente: ${msg.split('INSUFFICIENT_STOCK:')[1] ?? 'un producto'}`;
+  }
+  if (msg.includes('INVALID_TOTALS') || msg.includes('INVALID_MIXED_PAYMENT')) {
+    return 'Los montos no coinciden. Revisá el carrito y el pago.';
+  }
+  return 'Error al procesar la venta. Intente nuevamente.';
+}
+
 export default function CheckoutModal({ cart, subtotal, discountAmount, total, onClose, onComplete }: CheckoutModalProps) {
-  const { user } = useAuth();
   const [paymentMethod, setPaymentMethod] = useState<string>('cash');
   const [cashReceived, setCashReceived] = useState('');
   const [reference, setReference] = useState('');
@@ -59,83 +69,30 @@ export default function CheckoutModal({ cart, subtotal, discountAmount, total, o
 
     setProcessing(true);
     try {
-      // Get open cash register
-      const { data: openRegister } = await supabase
-        .from('cash_registers')
-        .select('id')
-        .eq('status', 'open')
-        .order('opened_at', { ascending: false })
-        .limit(1)
-        .single();
+      const { error } = await supabase.rpc('create_sale', {
+        p_items: cart.map((item) => ({
+          product_id: item.product.id,
+          product_name: item.product.name,
+          quantity: item.quantity,
+          unit_price: item.unit_price,
+          discount_amount: item.discount_amount,
+          subtotal: item.subtotal,
+          promotion_id: item.promotion_id,
+        })),
+        p_subtotal: subtotal,
+        p_discount_amount: discountAmount,
+        p_total: total,
+        p_payment_method: paymentMethod,
+        p_reference: reference || null,
+        p_mixed:
+          paymentMethod === 'mixed'
+            ? mixedEntries
+                .filter((e) => parseFloat(e.amount) > 0)
+                .map((e) => ({ method: e.method, amount: parseFloat(e.amount) }))
+            : [],
+      });
 
-      // Create sale
-      const { data: sale, error: saleError } = await supabase
-        .from('sales')
-        .insert({
-          user_id: user!.id,
-          cash_register_id: openRegister?.id ?? null,
-          subtotal,
-          discount_amount: discountAmount,
-          total,
-          status: 'completed',
-        })
-        .select()
-        .single();
-
-      if (saleError || !sale) throw saleError;
-
-      // Create sale details
-      const details = cart.map((item) => ({
-        sale_id: sale.id,
-        product_id: item.product.id,
-        product_name: item.product.name,
-        quantity: item.quantity,
-        unit_price: item.unit_price,
-        discount_amount: item.discount_amount,
-        subtotal: item.subtotal,
-        promotion_id: item.promotion_id,
-      }));
-      await supabase.from('sale_details').insert(details);
-
-      // Update stock
-      for (const item of cart) {
-        await supabase
-          .from('products')
-          .update({ stock: item.product.stock - item.quantity })
-          .eq('id', item.product.id);
-      }
-
-      // Create payments
-      if (paymentMethod === 'mixed') {
-        const { data: payment } = await supabase
-          .from('payments')
-          .insert({
-            sale_id: sale.id,
-            method: 'mixed',
-            amount: total,
-          })
-          .select()
-          .single();
-
-        if (payment) {
-          const mixedDetails = mixedEntries
-            .filter((e) => parseFloat(e.amount) > 0)
-            .map((e) => ({
-              payment_id: payment.id,
-              method: e.method,
-              amount: parseFloat(e.amount),
-              reference: null,
-            }));
-          await supabase.from('mixed_payment_details').insert(mixedDetails);
-        }
-      } else {
-        await supabase.from('payments').insert({
-          sale_id: sale.id,
-          method: paymentMethod,
-          amount: total,
-          reference: reference || null,
-        });
-      }
+      if (error) throw error;
 
       setSuccess(true);
       setTimeout(() => {
@@ -143,12 +100,11 @@ export default function CheckoutModal({ cart, subtotal, discountAmount, total, o
       }, 1500);
     } catch (err) {
       console.error('Checkout error:', err);
-      alert('Error al procesar la venta. Intente nuevamente.');
+      alert(getCheckoutErrorMessage(err));
     } finally {
       setProcessing(false);
     }
-  }, [processing, paymentMethod, cashReceived, mixedValid, cart, subtotal, discountAmount, total, user, mixedEntries, reference, onComplete]);
-
+  }, [processing, paymentMethod, cashReceived, mixedValid, cart, subtotal, discountAmount, total, mixedEntries, reference, onComplete]);
   if (success) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
