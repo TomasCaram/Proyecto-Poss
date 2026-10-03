@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase';
 import type { Product, Category } from '../lib/types';
 import { formatCurrency } from '../lib/utils';
 import {
-  Plus, Pencil, Trash2, Search, Package, X, Save, Star, ToggleLeft, ToggleRight,
+  Plus, Pencil, Search, Package, X, Save, Star, ToggleLeft, ToggleRight,
 } from 'lucide-react';
 
 export default function ProductsPage() {

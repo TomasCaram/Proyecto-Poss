@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '../lib/supabase';
-import type { Product, Promotion, PromotionProduct } from '../lib/types';
+import type { Product, Promotion } from '../lib/types';
 import { formatCurrency, getPromotionTypeLabel } from '../lib/utils';
 import { Plus, Pencil, X, Save, ToggleLeft, ToggleRight, Tag } from 'lucide-react';
 
@@ -96,7 +96,11 @@ export default function PromotionsPage() {
       promoId = editing.id;
     } else {
       const { data } = await supabase.from('promotions').insert(payload).select('id').single();
-      promoId = data.id;
+      if (!data) {
+  alert('No se pudo guardar la promoción.');
+  return;
+}
+promoId = data.id;;
     }
 
     const pp = form.selectedProductIds.map((pid) => ({ promotion_id: promoId, product_id: pid }));

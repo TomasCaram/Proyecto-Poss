@@ -1,7 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
-import { supabase } from '../../lib/supabase';
-import { useAuth } from '../../hooks/useAuth';
-import type { Product, CartItem, Promotion } from '../../lib/types';
+import { useState, useCallback } from 'react';
+import type { CartItem } from '../../lib/types';
 import { formatCurrency } from '../../lib/utils';
 import { Plus, Minus, Trash2, Percent, DollarSign } from 'lucide-react';
 

@@ -4,8 +4,8 @@ import { useAuth } from '../hooks/useAuth';
 import type { CashRegister, CashMovement } from '../lib/types';
 import { formatCurrency, formatDate } from '../lib/utils';
 import {
-  DollarSign, Plus, Minus, Lock, Unlock, TrendingUp, TrendingDown,
-  X, History, CheckCircle,
+   Plus, Minus, Lock, Unlock, TrendingUp, TrendingDown,
+  X,
 } from 'lucide-react';
 
 export default function CashPage() {

@@ -1,8 +1,8 @@
 import { useState, useCallback } from 'react';
 import { supabase } from '../../lib/supabase';
 import { useAuth } from '../../hooks/useAuth';
-import type { CartItem, Payment, MixedPaymentDetail } from '../../lib/types';
-import { formatCurrency, getPaymentMethodLabel } from '../../lib/utils';
+import type { CartItem } from '../../lib/types';
+import { formatCurrency } from '../../lib/utils';
 import { X, CreditCard, Banknote, Smartphone, ArrowRightLeft, CheckCircle } from 'lucide-react';
 
 interface CheckoutModalProps {
