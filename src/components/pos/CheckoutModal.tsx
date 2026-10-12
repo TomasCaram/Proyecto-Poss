@@ -40,9 +40,9 @@ export default function CheckoutModal({ cart, subtotal, discountAmount, total, o
   const [processing, setProcessing] = useState(false);
   const [success, setSuccess] = useState(false);
 
-  const change = paymentMethod === 'cash'
-    ? Math.max(0, (parseFloat(cashReceived) || 0) - total)
-    : 0;
+  // Si el campo está vacío, se toma como que el cliente pagó el monto exacto
+  const cashAmount = cashReceived.trim() === '' ? total : parseFloat(cashReceived) || 0;
+  const change = paymentMethod === 'cash' ? Math.max(0, cashAmount - total) : 0;
 
   const mixedTotal = mixedEntries.reduce((sum, e) => sum + (parseFloat(e.amount) || 0), 0);
   const mixedRemaining = Math.max(0, total - mixedTotal);
@@ -64,7 +64,7 @@ export default function CheckoutModal({ cart, subtotal, discountAmount, total, o
 
   const handleCheckout = useCallback(async () => {
     if (processing) return;
-    if (paymentMethod === 'cash' && (parseFloat(cashReceived) || 0) < total) return;
+    if (paymentMethod === 'cash' && cashAmount < total) return;
     if (paymentMethod === 'mixed' && !mixedValid) return;
 
     setProcessing(true);
@@ -104,7 +104,8 @@ export default function CheckoutModal({ cart, subtotal, discountAmount, total, o
     } finally {
       setProcessing(false);
     }
-  }, [processing, paymentMethod, cashReceived, mixedValid, cart, subtotal, discountAmount, total, mixedEntries, reference, onComplete]);
+  }, [processing, paymentMethod, cashAmount, mixedValid, cart, subtotal, discountAmount, total, mixedEntries, reference, onComplete]);
+
   if (success) {
     return (
       <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -184,11 +185,12 @@ export default function CheckoutModal({ cart, subtotal, discountAmount, total, o
                 type="number"
                 value={cashReceived}
                 onChange={(e) => setCashReceived(e.target.value)}
-                placeholder="0.00"
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCheckout(); }}
+                placeholder={`Exacto: ${formatCurrency(total)} · Enter para cobrar`}
                 className="w-full px-4 py-3 rounded-xl border border-slate-200 text-lg font-bold focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
                 autoFocus
               />
-              {(parseFloat(cashReceived) || 0) >= total && (
+              {cashAmount >= total && (
                 <div className="mt-3 bg-emerald-50 rounded-xl p-3 text-center">
                   <p className="text-sm text-emerald-600">Vuelto</p>
                   <p className="text-2xl font-bold text-emerald-700">{formatCurrency(change)}</p>
@@ -205,8 +207,10 @@ export default function CheckoutModal({ cart, subtotal, discountAmount, total, o
                 type="text"
                 value={reference}
                 onChange={(e) => setReference(e.target.value)}
-                placeholder="Nro autorizacion / referencia"
+                onKeyDown={(e) => { if (e.key === 'Enter') handleCheckout(); }}
+                placeholder="Nro autorizacion / referencia (Enter para cobrar)"
                 className="w-full px-4 py-2.5 rounded-xl border border-slate-200 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
+                autoFocus
               />
             </div>
           )}
@@ -264,7 +268,7 @@ export default function CheckoutModal({ cart, subtotal, discountAmount, total, o
             onClick={handleCheckout}
             disabled={
               processing ||
-              (paymentMethod === 'cash' && (parseFloat(cashReceived) || 0) < total) ||
+              (paymentMethod === 'cash' && cashAmount < total) ||
               (paymentMethod === 'mixed' && !mixedValid)
             }
             className={`w-full py-3.5 rounded-xl text-sm font-bold transition-all ${
