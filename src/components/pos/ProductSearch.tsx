@@ -6,14 +6,21 @@ import { Search } from 'lucide-react';
 
 interface ProductSearchProps {
   onAddProduct: (product: Product) => void;
+  focusSignal?: number;
+  onEnterEmpty?: () => void;
 }
 
-export default function ProductSearch({ onAddProduct }: ProductSearchProps) {
+export default function ProductSearch({ onAddProduct, focusSignal, onEnterEmpty }: ProductSearchProps) {
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Product[]>([]);
   const [showResults, setShowResults] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const resultsRef = useRef<HTMLDivElement>(null);
+
+  // Foco automático al entrar a Ventas y cada vez que cambia focusSignal
+  useEffect(() => {
+    inputRef.current?.focus();
+  }, [focusSignal]);
 
   const searchProducts = useCallback(async (q: string) => {
     if (q.length < 2) {
@@ -45,11 +52,39 @@ export default function ProductSearch({ onAddProduct }: ProductSearchProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const handleBarcode = (e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && results.length === 1) {
-      onAddProduct(results[0]);
-      setQuery('');
-      setShowResults(false);
+  const addAndReset = (product: Product) => {
+    onAddProduct(product);
+    setQuery('');
+    setResults([]);
+    setShowResults(false);
+    inputRef.current?.focus();
+  };
+
+  const handleKeyDown = async (e: React.KeyboardEvent) => {
+    if (e.key !== 'Enter') return;
+    const q = query.trim();
+
+    // Buscador vacío: abrir el cobro
+    if (q === '') {
+      onEnterEmpty?.();
+      return;
+    }
+
+    // Código de barras exacto (lector): no espera a que carguen los resultados
+    const { data: exact } = await supabase
+      .from('products')
+      .select('*, categories(*)')
+      .eq('is_active', true)
+      .eq('barcode', q)
+      .limit(1);
+    if (exact && exact.length === 1) {
+      addAndReset(exact[0]);
+      return;
+    }
+
+    // Si la búsqueda por nombre tiene un solo resultado, se agrega
+    if (results.length === 1) {
+      addAndReset(results[0]);
     }
   };
 
@@ -62,7 +97,7 @@ export default function ProductSearch({ onAddProduct }: ProductSearchProps) {
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          onKeyDown={handleBarcode}
+          onKeyDown={handleKeyDown}
           placeholder="Buscar producto o escanear codigo..."
           className="w-full pl-10 pr-4 py-2.5 rounded-xl border border-slate-200 bg-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-transparent"
         />
@@ -75,12 +110,7 @@ export default function ProductSearch({ onAddProduct }: ProductSearchProps) {
           {results.map((product) => (
             <button
               key={product.id}
-              onClick={() => {
-                onAddProduct(product);
-                setQuery('');
-                setShowResults(false);
-                inputRef.current?.focus();
-              }}
+              onClick={() => addAndReset(product)}
               className="w-full flex items-center justify-between px-4 py-3 hover:bg-emerald-50 transition-colors border-b border-slate-50 last:border-0"
             >
               <div className="text-left">

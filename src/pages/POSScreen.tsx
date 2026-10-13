@@ -11,6 +11,7 @@ export default function POSScreen() {
   const [showCheckout, setShowCheckout] = useState(false);
   const [activePromotions, setActivePromotions] = useState<Promotion[]>([]);
   const [globalDiscount, setGlobalDiscount] = useState(0);
+  const [searchFocusKey, setSearchFocusKey] = useState(0);
 
   const subtotal = cart.reduce((sum, item) => sum + item.subtotal, 0);
   const totalDiscount = cart.reduce((sum, item) => sum + item.discount_amount, 0);
@@ -86,13 +87,19 @@ export default function POSScreen() {
       }
       return [...prev, newItem];
     });
+    setSearchFocusKey((k) => k + 1);
   }, [findApplicablePromotion]);
 
   const handleCheckoutComplete = useCallback(() => {
     setCart([]);
     setShowCheckout(false);
     setGlobalDiscount(0);
+    setSearchFocusKey((k) => k + 1);
   }, []);
+
+  const openCheckout = () => {
+    if (cart.length > 0) setShowCheckout(true);
+  };
 
   return (
     <div className="h-full flex flex-col lg:flex-row">
@@ -100,7 +107,7 @@ export default function POSScreen() {
       <div className="flex-1 flex flex-col p-4 lg:p-6 overflow-y-auto">
         <div className="mb-4 lg:mb-6">
           <h1 className="text-2xl font-bold text-slate-800 mb-4">Punto de Venta</h1>
-          <ProductSearch onAddProduct={addProduct} />
+          <ProductSearch onAddProduct={addProduct} focusSignal={searchFocusKey} onEnterEmpty={openCheckout} />
         </div>
         <QuickProducts onAddProduct={addProduct} />
       </div>
@@ -119,10 +126,10 @@ export default function POSScreen() {
       {showCheckout && (
         <CheckoutModal
           cart={cart}
-                    subtotal={subtotal + totalDiscount}
+          subtotal={subtotal + totalDiscount}
           discountAmount={totalDiscount + globalDiscount}
           total={total}
-          onClose={() => setShowCheckout(false)}
+          onClose={() => { setShowCheckout(false); setSearchFocusKey((k) => k + 1); }}
           onComplete={handleCheckoutComplete}
         />
       )}
